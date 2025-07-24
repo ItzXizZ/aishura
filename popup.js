@@ -7,10 +7,16 @@ const screenshotBtn = document.getElementById('screenshot-btn');
 const chatBtn = document.getElementById('chat-btn');
 const autoScreenshotBtn = document.getElementById('auto-screenshot-btn');
 const autoScreenshotText = document.getElementById('auto-screenshot-text');
+const audioListenBtn = document.getElementById('audio-listen-btn');
+const audioListenText = document.getElementById('audio-listen-text');
+const systemAudioBtn = document.getElementById('system-audio-btn');
+const systemAudioText = document.getElementById('system-audio-text');
 const contentStatus = document.getElementById('content-status');
 const screenshotStatus = document.getElementById('screenshot-status');
 const chatStatus = document.getElementById('chat-status');
 const autoScreenshotStatus = document.getElementById('auto-screenshot-status');
+const audioListenStatus = document.getElementById('audio-listen-status');
+const systemAudioStatus = document.getElementById('system-audio-status');
 const loading = document.getElementById('loading');
 const errorMessage = document.getElementById('error-message');
 const successMessage = document.getElementById('success-message');
@@ -21,6 +27,8 @@ let contentExtracted = false;
 let screenshotAvailable = false;
 let chatInterfaceOpen = false;
 let autoScreenshotEnabled = false;
+let audioListeningEnabled = false;
+let systemAudioEnabled = false;
 
 // Initialize popup
 async function initializePopup() {
@@ -90,6 +98,14 @@ function updateStatusDisplay() {
   autoScreenshotStatus.textContent = autoScreenshotEnabled ? 'Enabled' : 'Disabled';
   autoScreenshotStatus.className = `status-value ${autoScreenshotEnabled ? 'success' : ''}`;
   autoScreenshotText.textContent = autoScreenshotEnabled ? 'Disable Auto-Screenshots' : 'Enable Auto-Screenshots';
+  
+  audioListenStatus.textContent = audioListeningEnabled ? 'Listening' : 'Stopped';
+  audioListenStatus.className = `status-value ${audioListeningEnabled ? 'success' : ''}`;
+  audioListenText.textContent = audioListeningEnabled ? 'Stop Audio Listening' : 'Start Audio Listening';
+  
+  systemAudioStatus.textContent = systemAudioEnabled ? 'Listening' : 'Stopped';
+  systemAudioStatus.className = `status-value ${systemAudioEnabled ? 'success' : ''}`;
+  systemAudioText.textContent = systemAudioEnabled ? 'Stop System Audio' : 'Start System Audio';
 }
 
 // Show loading state
@@ -132,6 +148,8 @@ function disableButtons() {
   screenshotBtn.disabled = true;
   chatBtn.disabled = true;
   autoScreenshotBtn.disabled = true;
+  audioListenBtn.disabled = true;
+  systemAudioBtn.disabled = true;
 }
 
 // Enable buttons
@@ -140,6 +158,8 @@ function enableButtons() {
   screenshotBtn.disabled = false;
   chatBtn.disabled = false;
   autoScreenshotBtn.disabled = false;
+  audioListenBtn.disabled = false;
+  systemAudioBtn.disabled = false;
 }
 
 // Handle analyze page button
@@ -229,6 +249,54 @@ async function handleAutoScreenshotToggle() {
   }
 }
 
+// Handle audio listening toggle
+async function handleAudioListeningToggle() {
+  try {
+    showLoading(audioListeningEnabled ? 'Stopping audio listening...' : 'Starting audio listening...');
+    enableButtons();
+
+    // Send message to content script to toggle audio listening
+    const response = await chrome.tabs.sendMessage(currentTab.id, {
+      type: 'TOGGLE_AUDIO_LISTENING'
+    });
+
+    if (response && response.success) {
+      audioListeningEnabled = response.enabled;
+      updateStatusDisplay();
+      showSuccess(audioListeningEnabled ? 'Audio listening started!' : 'Audio listening stopped!');
+    } else {
+      throw new Error(response?.error || 'Failed to toggle audio listening');
+    }
+  } catch (error) {
+    console.error('Audio listening toggle failed:', error);
+    showError('Failed to toggle audio listening: ' + error.message);
+  }
+}
+
+// Handle system audio toggle
+async function handleSystemAudioToggle() {
+  try {
+    showLoading(systemAudioEnabled ? 'Stopping system audio...' : 'Starting system audio...');
+    enableButtons();
+
+    // Send message to content script to toggle system audio
+    const response = await chrome.tabs.sendMessage(currentTab.id, {
+      type: 'TOGGLE_SYSTEM_AUDIO'
+    });
+
+    if (response && response.success) {
+      systemAudioEnabled = response.enabled;
+      updateStatusDisplay();
+      showSuccess(systemAudioEnabled ? 'System audio started!' : 'System audio stopped!');
+    } else {
+      throw new Error(response?.error || 'Failed to toggle system audio');
+    }
+  } catch (error) {
+    console.error('System audio toggle failed:', error);
+    showError('Failed to toggle system audio: ' + error.message);
+  }
+}
+
 // Handle open chat button
 async function handleOpenChat() {
   try {
@@ -263,6 +331,8 @@ analyzeBtn.addEventListener('click', handleAnalyzePage);
 screenshotBtn.addEventListener('click', handleTakeScreenshot);
 chatBtn.addEventListener('click', handleOpenChat);
 autoScreenshotBtn.addEventListener('click', handleAutoScreenshotToggle);
+audioListenBtn.addEventListener('click', handleAudioListeningToggle);
+systemAudioBtn.addEventListener('click', handleSystemAudioToggle);
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {

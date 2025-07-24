@@ -83,6 +83,14 @@ let screenshotData = null;
 let scrollTimeout = null;
 let lastScrollTime = 0;
 let autoScreenshotEnabled = false;
+let audioListeningEnabled = false;
+let systemAudioEnabled = false;
+let microphoneStream = null;
+let systemAudioStream = null;
+let audioContext = null;
+let mediaRecorder = null;
+let isRecording = false;
+let screenshotNotifications = [];
 
 // Create fullscreen glass overlay
 function createGlassOverlay() {
@@ -292,17 +300,32 @@ function createGlassOverlay() {
       z-index: 10;
     `;
     rightHeader.innerHTML = `
-      <h3 style="
-        margin: 0;
-        color: rgba(0, 0, 0, 0.8);
-        font-size: 16px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      ">
-        💬 <span>AI Chat</span>
-      </h3>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <h3 style="
+          margin: 0;
+          color: rgba(0, 0, 0, 0.8);
+          font-size: 16px;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        ">
+          💬 <span>AI Chat</span>
+        </h3>
+        <div id="ai-shura-audio-indicator" style="
+          display: none;
+          background: rgba(76, 201, 240, 0.2);
+          border: 1px solid rgba(76, 201, 240, 0.3);
+          border-radius: 12px;
+          padding: 4px 8px;
+          font-size: 11px;
+          color: rgba(76, 201, 240, 0.8);
+          font-weight: 500;
+          animation: pulseGlow 2s ease-in-out infinite;
+        ">
+          🎤 Listening
+        </div>
+      </div>
       <button id="ai-shura-collapse-right" style="
         background: rgba(255, 255, 255, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.3);
@@ -555,6 +578,9 @@ async function takeScreenshot() {
       screenshotData = response.screenshotData;
       console.log('Screenshot captured successfully, data length:', screenshotData.length);
       
+      // Add screenshot notification
+      addScreenshotNotification('Manual screenshot captured');
+      
       // Extract content if not already done
       if (!extractedContent) {
         extractedContent = await extractContent();
@@ -637,6 +663,46 @@ function updateSidebarContent(content) {
       `;
     }
 
+    // Create screenshot notifications section
+    let notificationsSection = '';
+    if (screenshotNotifications.length > 0) {
+      const notificationsHtml = screenshotNotifications.map(notification => `
+        <div style="
+          background: rgba(255, 193, 7, 0.1);
+          border: 1px solid rgba(255, 193, 7, 0.2);
+          border-radius: 8px;
+          padding: 8px 12px;
+          margin-bottom: 8px;
+          font-size: 11px;
+        ">
+          <div style="color: rgba(255, 152, 0, 0.8); font-weight: 500; margin-bottom: 2px;">
+            📸 ${notification.message}
+          </div>
+          <div style="color: rgba(0, 0, 0, 0.5); font-size: 10px;">
+            ${notification.timestamp}
+          </div>
+        </div>
+      `).join('');
+      
+      notificationsSection = `
+        <div style="margin-bottom: 16px;">
+          <div style="
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.2);
+            border-radius: 12px;
+            padding: 16px;
+          ">
+            <div style="font-size: 13px; color: rgba(255, 152, 0, 0.8); font-weight: 600; margin-bottom: 12px;">
+              📸 Screenshot Notifications
+            </div>
+            <div style="max-height: 200px; overflow-y: auto;">
+              ${notificationsHtml}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     sidebar.innerHTML = `
       <div style="margin-bottom: 16px;">
         <div style="
@@ -656,6 +722,8 @@ function updateSidebarContent(content) {
         </div>
         
         ${screenshotSection}
+        
+        ${notificationsSection}
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
           <div style="
@@ -1091,6 +1159,7 @@ function setupScrollListener() {
       try {
         console.log('Auto-capturing screenshot after scroll...');
         await takeScreenshot();
+        addScreenshotNotification('Auto-screenshot captured after scroll');
         console.log('Auto-screenshot captured successfully');
       } catch (error) {
         console.error('Auto-screenshot failed:', error);
@@ -1104,6 +1173,316 @@ function setupScrollListener() {
   window.addEventListener('scroll', handleScroll, { passive: true });
   
   console.log('Scroll listener setup complete');
+}
+
+// Add screenshot notification
+function addScreenshotNotification(message) {
+  const notification = {
+    id: Date.now(),
+    message: message,
+    timestamp: new Date().toLocaleTimeString(),
+    type: 'screenshot'
+  };
+  
+  screenshotNotifications.unshift(notification);
+  
+  // Keep only last 10 notifications
+  if (screenshotNotifications.length > 10) {
+    screenshotNotifications = screenshotNotifications.slice(0, 10);
+  }
+  
+  // Add notification to chat interface
+  addMessageToChat('system', `📸 ${message}`);
+  
+  // Update sidebar if overlay is visible
+  if (isOverlayVisible) {
+    updateSidebarContent(extractedContent);
+  }
+}
+
+// Audio handling functions
+async function startMicrophoneListening() {
+  try {
+    console.log('Starting microphone listening...');
+    
+    // Request microphone permission
+    microphoneStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    
+    // Create audio context for processing
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(microphoneStream);
+    
+    // Create analyzer node
+    const analyzer = audioContext.createAnalyser();
+    analyzer.fftSize = 2048;
+    source.connect(analyzer);
+    
+    // Start recording and processing
+    startAudioProcessing(analyzer, 'microphone');
+    
+    audioListeningEnabled = true;
+    showAudioIndicator();
+    console.log('Microphone listening started');
+    return true;
+  } catch (error) {
+    console.error('Failed to start microphone listening:', error);
+    throw error;
+  }
+}
+
+async function startSystemAudioCapture() {
+  try {
+    console.log('Starting system audio capture...');
+    
+    // Request desktop capture for system audio through background script
+    const response = await chrome.runtime.sendMessage({
+      type: 'REQUEST_DESKTOP_CAPTURE'
+    });
+    
+    if (!response || !response.success) {
+      throw new Error(response?.error || 'Failed to get desktop capture permission');
+    }
+    
+    // Get the stream using the stream ID
+    systemAudioStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        mandatory: {
+          chromeMediaSource: 'desktop',
+          chromeMediaSourceId: response.streamId
+        }
+      }
+    });
+    
+    // Create audio context for processing
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(systemAudioStream);
+    
+    // Create analyzer node
+    const analyzer = audioContext.createAnalyser();
+    analyzer.fftSize = 2048;
+    source.connect(analyzer);
+    
+    // Start recording and processing
+    startAudioProcessing(analyzer, 'system');
+    
+    systemAudioEnabled = true;
+    showAudioIndicator();
+    console.log('System audio capture started');
+    return true;
+  } catch (error) {
+    console.error('Failed to start system audio capture:', error);
+    throw error;
+  }
+}
+
+function startAudioProcessing(analyzer, source) {
+  const bufferLength = analyzer.frequencyBinCount;
+  const dataArray = new Uint8Array(bufferLength);
+  
+  let silenceCounter = 0;
+  let speechBuffer = [];
+  let isSpeaking = false;
+  let isProcessing = false;
+  
+  const processAudio = () => {
+    if (!audioContext || audioContext.state === 'closed') return;
+    
+    analyzer.getByteFrequencyData(dataArray);
+    
+    // Calculate average volume
+    const average = dataArray.reduce((sum, value) => sum + value, 0) / bufferLength;
+    
+    // Detect speech (simple threshold-based detection)
+    if (average > 25) { // Lowered threshold for better detection
+      silenceCounter = 0;
+      if (!isSpeaking) {
+        isSpeaking = true;
+        console.log(`${source} speech detected`);
+        addMessageToChat('system', `🎤 ${source} audio detected - listening...`);
+      }
+      
+      // Add to speech buffer
+      speechBuffer.push(average);
+      
+      // If we have enough speech data and not already processing, process it
+      if (speechBuffer.length > 30 && !isProcessing) { // Reduced buffer size for faster response
+        isProcessing = true;
+        processSpeechData(speechBuffer, source).finally(() => {
+          isProcessing = false;
+          speechBuffer = [];
+        });
+      }
+    } else {
+      silenceCounter++;
+      if (silenceCounter > 50 && isSpeaking) { // Reduced silence threshold
+        isSpeaking = false;
+        console.log(`${source} speech ended`);
+      }
+    }
+    
+    // Continue processing
+    if (audioContext && audioContext.state !== 'closed') {
+      requestAnimationFrame(processAudio);
+    }
+  };
+  
+  processAudio();
+}
+
+async function processSpeechData(audioData, source) {
+  try {
+    console.log(`Processing ${source} audio data...`);
+    
+    // Convert audio data to text using Web Speech API
+    const text = await convertSpeechToText();
+    
+    if (text && text.trim()) {
+      console.log(`${source} speech recognized:`, text);
+      
+      // Add audio notification to chat
+      addMessageToChat('system', `🎤 Audio detected: "${text}"`);
+      
+      // Send to AI for processing
+      const response = await processAudioWithAI(text, source);
+      
+      // Add AI response to chat
+      addMessageToChat('assistant', response);
+      
+      // Speak the response
+      speakResponse(response);
+    } else {
+      console.log('No speech text recognized');
+    }
+  } catch (error) {
+    console.error(`Failed to process ${source} audio:`, error);
+    addMessageToChat('error', `Audio processing failed: ${error.message}`);
+  }
+}
+
+async function convertSpeechToText() {
+  return new Promise((resolve, reject) => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      reject(new Error('Speech recognition not supported'));
+      return;
+    }
+    
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    recognition.maxAlternatives = 1;
+    
+    let hasResult = false;
+    
+    recognition.onresult = (event) => {
+      hasResult = true;
+      const transcript = event.results[0][0].transcript;
+      console.log('Speech recognition result:', transcript);
+      resolve(transcript);
+    };
+    
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      if (event.error === 'no-speech') {
+        resolve(''); // Resolve with empty string for no speech
+      } else {
+        reject(new Error(event.error));
+      }
+    };
+    
+    recognition.onend = () => {
+      if (!hasResult) {
+        resolve(''); // Resolve with empty string if no result
+      }
+    };
+    
+    try {
+      recognition.start();
+      console.log('Speech recognition started');
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+async function processAudioWithAI(text, source) {
+  try {
+    // Send to background script for AI processing
+    const response = await chrome.runtime.sendMessage({
+      type: 'PROCESS_AUDIO_INPUT',
+      text: text,
+      source: source,
+      content: extractedContent
+    });
+    
+    if (response && response.success) {
+      return response.response;
+    } else {
+      throw new Error(response?.error || 'Failed to process audio with AI');
+    }
+  } catch (error) {
+    console.error('Failed to process audio with AI:', error);
+    return 'Sorry, I could not process your audio input.';
+  }
+}
+
+function speakResponse(text) {
+  if ('speechSynthesis' in window) {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+    utterance.volume = 0.8;
+    speechSynthesis.speak(utterance);
+  }
+}
+
+function stopAudioListening() {
+  console.log('Stopping audio listening...');
+  
+  if (microphoneStream) {
+    microphoneStream.getTracks().forEach(track => track.stop());
+    microphoneStream = null;
+  }
+  
+  if (systemAudioStream) {
+    systemAudioStream.getTracks().forEach(track => track.stop());
+    systemAudioStream = null;
+  }
+  
+  if (audioContext) {
+    audioContext.close();
+    audioContext = null;
+  }
+  
+  audioListeningEnabled = false;
+  systemAudioEnabled = false;
+  
+  // Hide audio indicator
+  hideAudioIndicator();
+  
+  console.log('Audio listening stopped');
+}
+
+function showAudioIndicator() {
+  const indicator = document.getElementById('ai-shura-audio-indicator');
+  if (indicator) {
+    indicator.style.display = 'block';
+  }
+}
+
+function hideAudioIndicator() {
+  const indicator = document.getElementById('ai-shura-audio-indicator');
+  if (indicator) {
+    indicator.style.display = 'none';
+  }
 }
 
 // Setup message listeners
@@ -1154,6 +1533,39 @@ function setupMessageListeners() {
         console.log('Auto-screenshot enabled:', autoScreenshotEnabled);
         sendResponse({ success: true, enabled: autoScreenshotEnabled });
         return false;
+        
+      case 'TOGGLE_AUDIO_LISTENING':
+        if (audioListeningEnabled) {
+          stopAudioListening();
+          sendResponse({ success: true, enabled: false });
+        } else {
+          startMicrophoneListening().then(() => {
+            sendResponse({ success: true, enabled: true });
+          }).catch(error => {
+            sendResponse({ success: false, error: error.message });
+          });
+        }
+        return true;
+        
+      case 'TOGGLE_SYSTEM_AUDIO':
+        if (systemAudioEnabled) {
+          stopAudioListening();
+          sendResponse({ success: true, enabled: false });
+        } else {
+          startSystemAudioCapture().then(() => {
+            sendResponse({ success: true, enabled: true });
+          }).catch(error => {
+            console.error('System audio failed, falling back to microphone:', error);
+            // Fallback to microphone if system audio fails
+            startMicrophoneListening().then(() => {
+              addMessageToChat('system', '⚠️ System audio capture failed, using microphone instead');
+              sendResponse({ success: true, enabled: true, fallback: true });
+            }).catch(micError => {
+              sendResponse({ success: false, error: `System audio failed: ${error.message}. Microphone also failed: ${micError.message}` });
+            });
+          });
+        }
+        return true;
     }
   });
 }
@@ -1187,8 +1599,14 @@ window.aiShura = {
   handleSendMessage,
   addMessageToChat,
   takeScreenshot,
+  startMicrophoneListening,
+  startSystemAudioCapture,
+  stopAudioListening,
+  showAudioIndicator,
+  hideAudioIndicator,
   extractedContent: () => extractedContent,
-  conversationHistory: () => conversationHistory
+  conversationHistory: () => conversationHistory,
+  audioStatus: () => ({ audioListeningEnabled, systemAudioEnabled })
 };
 
 console.log('=== AI SHURA ENHANCED CONTENT SCRIPT LOADED ==='); 

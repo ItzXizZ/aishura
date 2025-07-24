@@ -7,6 +7,8 @@ console.log('=== AI SHURA BACKGROUND SERVICE WORKER STARTING ===');
 const OPENAI_API_KEY = 'YOUR_OPENAI_API_KEY_HERE';
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
+
+
 // Global state
 let conversationHistory = [];
 
@@ -25,6 +27,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       
     case 'EXTRACT_CONTENT':
       handleContentExtraction(message, sendResponse);
+      return true;
+      
+    case 'PROCESS_AUDIO_INPUT':
+      handleAudioInput(message, sendResponse);
+      return true;
+      
+    case 'REQUEST_DESKTOP_CAPTURE':
+      handleDesktopCapture(message, sendResponse);
       return true;
       
     default:
@@ -201,6 +211,122 @@ async function handleContentExtraction(message, sendResponse) {
     sendResponse({ 
       success: false, 
       error: `Failed to extract content: ${error.message}` 
+    });
+  }
+}
+
+// Handle audio input processing
+async function handleAudioInput(message, sendResponse) {
+  try {
+    const { text, source, content } = message;
+    
+    if (!text || !content) {
+      sendResponse({ success: false, error: 'Missing text or content' });
+      return;
+    }
+
+    console.log(`Processing audio input from ${source}:`, text.substring(0, 100) + '...');
+    
+    // Prepare the conversation context for audio input
+    const systemPrompt = `You are AI Shura, an intelligent browser assistant that helps users understand web page content. 
+
+You have received an audio input from the user's ${source}. Please provide a helpful, concise response that can be spoken back to the user.
+
+You have access to the following information about the current web page:
+- Title: ${content.title || 'Unknown'}
+- URL: ${content.url || 'Unknown'}
+- Text content: ${content.text ? content.text.substring(0, 4000) + '...' : 'No text content available'}
+- Images: ${content.images ? content.images.length + ' images with descriptions' : 'No images'}
+- Links: ${content.links ? content.links.length + ' relevant links' : 'No links'}
+
+Please provide a natural, conversational response that answers the user's audio question. Keep responses concise and suitable for speech synthesis.`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory.slice(-6), // Keep last 6 exchanges for context
+      { role: 'user', content: text }
+    ];
+
+    // Call OpenAI API
+    const response = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: messages,
+        max_tokens: 500, // Shorter for speech
+        temperature: 0.7,
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`OpenAI API error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const answer = data.choices[0]?.message?.content;
+
+    if (!answer) {
+      throw new Error('No response from AI');
+    }
+
+    // Update conversation history
+    conversationHistory.push({ role: 'user', content: text });
+    conversationHistory.push({ role: 'assistant', content: answer });
+
+    // Keep conversation history manageable
+    if (conversationHistory.length > 20) {
+      conversationHistory = conversationHistory.slice(-20);
+    }
+
+    console.log('Audio input processed successfully');
+    sendResponse({ success: true, response: answer });
+
+  } catch (error) {
+    console.error('Error processing audio input:', error);
+    sendResponse({ 
+      success: false, 
+      error: `Failed to process audio input: ${error.message}` 
+    });
+  }
+}
+
+// Handle desktop capture request
+async function handleDesktopCapture(message, sendResponse) {
+  try {
+    console.log('Requesting desktop capture...');
+    
+    // Get current tab for desktop capture
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    
+    if (!tab) {
+      throw new Error('No active tab found');
+    }
+    
+    // Use chrome.desktopCapture to get stream ID
+    const streamId = await new Promise((resolve, reject) => {
+      chrome.desktopCapture.chooseDesktopMedia(['tab', 'audio'], tab, (streamId) => {
+        if (streamId) {
+          resolve(streamId);
+        } else {
+          reject(new Error('No stream selected'));
+        }
+      });
+    });
+    
+    console.log('Desktop capture stream ID obtained:', streamId);
+    sendResponse({ success: true, streamId: streamId });
+    
+  } catch (error) {
+    console.error('Desktop capture failed:', error);
+    sendResponse({ 
+      success: false, 
+      error: `Failed to get desktop capture: ${error.message}` 
     });
   }
 }
