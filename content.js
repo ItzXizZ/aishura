@@ -91,6 +91,8 @@ let audioContext = null;
 let mediaRecorder = null;
 let isRecording = false;
 let screenshotNotifications = [];
+let ttsEnabled = true;
+let currentUtterance = null;
 
 // Create fullscreen glass overlay
 function createGlassOverlay() {
@@ -325,6 +327,18 @@ function createGlassOverlay() {
         ">
           🎤 Listening
         </div>
+        <button id="ai-shura-tts-toggle" style="
+          background: rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 6px;
+          color: rgba(0, 0, 0, 0.7);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 4px 8px;
+          backdrop-filter: blur(5px);
+          transition: all 0.2s ease;
+          margin-right: 8px;
+        ">🔊 TTS</button>
       </div>
       <button id="ai-shura-collapse-right" style="
         background: rgba(255, 255, 255, 0.2);
@@ -446,6 +460,7 @@ function setupOverlayEventListeners() {
   const collapseRightBtn = glassOverlay.querySelector('#ai-shura-collapse-right');
   const analyzeBtn = glassOverlay.querySelector('#ai-shura-analyze-btn');
   const screenshotBtn = glassOverlay.querySelector('#ai-shura-screenshot-btn');
+  const ttsToggleBtn = glassOverlay.querySelector('#ai-shura-tts-toggle');
 
   // Analyze Page button
   analyzeBtn.addEventListener('click', () => {
@@ -550,6 +565,17 @@ function setupOverlayEventListeners() {
   questionInput.addEventListener('input', (e) => {
     e.target.style.height = 'auto';
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+  });
+
+  // TTS toggle button
+  ttsToggleBtn.addEventListener('click', toggleTTS);
+  
+  ttsToggleBtn.addEventListener('mouseenter', (e) => {
+    e.target.style.background = 'rgba(255, 255, 255, 0.3)';
+  });
+  
+  ttsToggleBtn.addEventListener('mouseleave', (e) => {
+    e.target.style.background = ttsEnabled ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 59, 48, 0.2)';
   });
 
   // Escape key to close
@@ -817,11 +843,28 @@ async function handleSendMessage() {
   const thinkingId = addThinkingIndicator();
 
   try {
+    // Ensure we have the latest content with screenshot
+    let currentContent = extractedContent;
+    if (!currentContent) {
+      currentContent = await extractContent();
+    }
+    
+    // If we have screenshot data, make sure it's included
+    if (screenshotData && !currentContent.screenshot) {
+      currentContent.screenshot = screenshotData;
+    }
+    
+    console.log('Sending question with content:', {
+      hasScreenshot: !!currentContent.screenshot,
+      textLength: currentContent.text?.length || 0,
+      title: currentContent.title
+    });
+    
     // Send question to background script
     const response = await chrome.runtime.sendMessage({
       type: 'SUBMIT_QUESTION',
       question: question,
-      content: extractedContent
+      content: currentContent
     });
 
     // Remove thinking indicator
@@ -1142,9 +1185,16 @@ function setupScrollListener() {
   // Throttled scroll handler
   let scrollTimeout = null;
   let isProcessing = false;
+  let lastScrollY = window.scrollY;
   
   const handleScroll = async () => {
     if (isProcessing || !autoScreenshotEnabled) return;
+    
+    const currentScrollY = window.scrollY;
+    const scrollDistance = Math.abs(currentScrollY - lastScrollY);
+    
+    // Only capture if scrolled more than 200px
+    if (scrollDistance < 200) return;
     
     // Clear existing timeout
     if (scrollTimeout) {
@@ -1165,6 +1215,7 @@ function setupScrollListener() {
         console.error('Auto-screenshot failed:', error);
       } finally {
         isProcessing = false;
+        lastScrollY = window.scrollY;
       }
     }, 1000);
   };
@@ -1305,6 +1356,8 @@ function startAudioProcessing(analyzer, source) {
         isSpeaking = true;
         console.log(`${source} speech detected`);
         addMessageToChat('system', `🎤 ${source} audio detected - listening...`);
+        // Stop TTS when user starts speaking
+        stopTTS();
       }
       
       // Add to speech buffer
@@ -1415,12 +1468,29 @@ async function convertSpeechToText() {
 
 async function processAudioWithAI(text, source) {
   try {
+    // Ensure we have the latest content with screenshot
+    let currentContent = extractedContent;
+    if (!currentContent) {
+      currentContent = await extractContent();
+    }
+    
+    // If we have screenshot data, make sure it's included
+    if (screenshotData && !currentContent.screenshot) {
+      currentContent.screenshot = screenshotData;
+    }
+    
+    console.log('Processing audio with content:', {
+      hasScreenshot: !!currentContent.screenshot,
+      textLength: currentContent.text?.length || 0,
+      title: currentContent.title
+    });
+    
     // Send to background script for AI processing
     const response = await chrome.runtime.sendMessage({
       type: 'PROCESS_AUDIO_INPUT',
       text: text,
       source: source,
-      content: extractedContent
+      content: currentContent
     });
     
     if (response && response.success) {
@@ -1435,12 +1505,48 @@ async function processAudioWithAI(text, source) {
 }
 
 function speakResponse(text) {
+  if (!ttsEnabled || !('speechSynthesis' in window)) {
+    return;
+  }
+  
+  // Stop any current speech
+  if (currentUtterance) {
+    speechSynthesis.cancel();
+  }
+  
+  currentUtterance = new SpeechSynthesisUtterance(text);
+  currentUtterance.rate = 0.9;
+  currentUtterance.pitch = 1;
+  currentUtterance.volume = 0.8;
+  
+  currentUtterance.onend = () => {
+    currentUtterance = null;
+  };
+  
+  currentUtterance.onerror = () => {
+    currentUtterance = null;
+  };
+  
+  speechSynthesis.speak(currentUtterance);
+}
+
+function stopTTS() {
   if ('speechSynthesis' in window) {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.volume = 0.8;
-    speechSynthesis.speak(utterance);
+    speechSynthesis.cancel();
+    currentUtterance = null;
+  }
+}
+
+function toggleTTS() {
+  ttsEnabled = !ttsEnabled;
+  const ttsButton = document.getElementById('ai-shura-tts-toggle');
+  if (ttsButton) {
+    ttsButton.textContent = ttsEnabled ? '🔊 TTS' : '🔇 TTS';
+    ttsButton.style.background = ttsEnabled ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 59, 48, 0.2)';
+  }
+  
+  if (!ttsEnabled) {
+    stopTTS();
   }
 }
 
@@ -1604,9 +1710,13 @@ window.aiShura = {
   stopAudioListening,
   showAudioIndicator,
   hideAudioIndicator,
+  speakResponse,
+  stopTTS,
+  toggleTTS,
   extractedContent: () => extractedContent,
   conversationHistory: () => conversationHistory,
-  audioStatus: () => ({ audioListeningEnabled, systemAudioEnabled })
+  audioStatus: () => ({ audioListeningEnabled, systemAudioEnabled, ttsEnabled }),
+  screenshotData: () => screenshotData
 };
 
 console.log('=== AI SHURA ENHANCED CONTENT SCRIPT LOADED ==='); 

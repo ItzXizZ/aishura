@@ -65,6 +65,9 @@ You have access to the following information about the current web page:
 - Text content: ${content.text ? content.text.substring(0, 8000) + '...' : 'No text content available'}
 - Images: ${content.images ? content.images.length + ' images with descriptions' : 'No images'}
 - Links: ${content.links ? content.links.length + ' relevant links' : 'No links'}
+- Screenshot: ${content.screenshot ? 'Visual screenshot of the page is available' : 'No screenshot available'}
+
+IMPORTANT: If the user asks about what they see in a screenshot or about visual elements, and a screenshot is available, you can analyze the visual content. If no screenshot is available, let them know they may need to take a screenshot first.
 
 Please provide helpful, accurate, and concise answers about the page content. If the user asks about something not present in the content, politely inform them. Focus on being helpful and informative while staying within the context of the provided content.
 
@@ -226,6 +229,7 @@ async function handleAudioInput(message, sendResponse) {
     }
 
     console.log(`Processing audio input from ${source}:`, text.substring(0, 100) + '...');
+    console.log('Content has screenshot:', !!content.screenshot);
     
     // Prepare the conversation context for audio input
     const systemPrompt = `You are AI Shura, an intelligent browser assistant that helps users understand web page content. 
@@ -238,6 +242,9 @@ You have access to the following information about the current web page:
 - Text content: ${content.text ? content.text.substring(0, 4000) + '...' : 'No text content available'}
 - Images: ${content.images ? content.images.length + ' images with descriptions' : 'No images'}
 - Links: ${content.links ? content.links.length + ' relevant links' : 'No links'}
+- Screenshot: ${content.screenshot ? 'Visual screenshot of the page is available' : 'No screenshot available'}
+
+IMPORTANT: If the user asks about what they see in a screenshot or about visual elements, and a screenshot is available, you can analyze the visual content. If no screenshot is available, let them know they may need to take a screenshot first.
 
 Please provide a natural, conversational response that answers the user's audio question. Keep responses concise and suitable for speech synthesis.`;
 
