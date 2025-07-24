@@ -230,6 +230,7 @@ async function handleAudioInput(message, sendResponse) {
 
     console.log(`Processing audio input from ${source}:`, text.substring(0, 100) + '...');
     console.log('Content has screenshot:', !!content.screenshot);
+    console.log('Screenshot data length:', content.screenshot ? content.screenshot.length : 0);
     
     // Prepare the conversation context for audio input
     const systemPrompt = `You are AI Shura, an intelligent browser assistant that helps users understand web page content. 
@@ -242,16 +243,38 @@ You have access to the following information about the current web page:
 - Text content: ${content.text ? content.text.substring(0, 4000) + '...' : 'No text content available'}
 - Images: ${content.images ? content.images.length + ' images with descriptions' : 'No images'}
 - Links: ${content.links ? content.links.length + ' relevant links' : 'No links'}
-- Screenshot: ${content.screenshot ? 'Visual screenshot of the page is available' : 'No screenshot available'}
+- Screenshot: ${content.screenshot ? `Visual screenshot of the page is available (${content.screenshot.length} bytes)` : 'No screenshot available'}
 
-IMPORTANT: If the user asks about what they see in a screenshot or about visual elements, and a screenshot is available, you can analyze the visual content. If no screenshot is available, let them know they may need to take a screenshot first.
+IMPORTANT: If the user asks about what they see in a screenshot or about visual elements, and a screenshot is available, you can analyze the visual content. The screenshot data is included in the message content. If no screenshot is available, let them know they may need to take a screenshot first.
 
 Please provide a natural, conversational response that answers the user's audio question. Keep responses concise and suitable for speech synthesis.`;
+
+    // Prepare the user message with image if available
+    let userMessage = { role: 'user', content: [] };
+    
+    // Add text content
+    userMessage.content.push({
+      type: 'text',
+      text: text
+    });
+    
+    // Add screenshot if available
+    if (content.screenshot) {
+      console.log('Including screenshot in audio AI context, screenshot length:', content.screenshot.length);
+      userMessage.content.push({
+        type: 'image_url',
+        image_url: {
+          url: content.screenshot
+        }
+      });
+    } else {
+      console.log('No screenshot available in audio content');
+    }
 
     const messages = [
       { role: 'system', content: systemPrompt },
       ...conversationHistory.slice(-6), // Keep last 6 exchanges for context
-      { role: 'user', content: text }
+      userMessage
     ];
 
     // Call OpenAI API
@@ -283,7 +306,7 @@ Please provide a natural, conversational response that answers the user's audio 
     }
 
     // Update conversation history
-    conversationHistory.push({ role: 'user', content: text });
+    conversationHistory.push(userMessage);
     conversationHistory.push({ role: 'assistant', content: answer });
 
     // Keep conversation history manageable

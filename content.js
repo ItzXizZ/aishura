@@ -1474,13 +1474,15 @@ async function processAudioWithAI(text, source) {
       currentContent = await extractContent();
     }
     
-    // If we have screenshot data, make sure it's included
-    if (screenshotData && !currentContent.screenshot) {
+    // Always include screenshot data if available
+    if (screenshotData) {
       currentContent.screenshot = screenshotData;
+      console.log('Screenshot data included in audio processing, length:', screenshotData.length);
     }
     
     console.log('Processing audio with content:', {
       hasScreenshot: !!currentContent.screenshot,
+      screenshotLength: currentContent.screenshot ? currentContent.screenshot.length : 0,
       textLength: currentContent.text?.length || 0,
       title: currentContent.title
     });
