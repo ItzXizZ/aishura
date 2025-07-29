@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "AI Shura - ChatGPT Browser Assistant",
   "version": "1.0.0",
-  "description": "An intelligent browser assistant powered by ChatGPT that can analyze web pages and answer questions about content with screenshot capabilities.",
+  "description": "An intelligent browser assistant powered by ChatGPT.",
   "permissions": [
     "activeTab",
     "tabCapture",

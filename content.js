@@ -93,6 +93,8 @@ let isRecording = false;
 let screenshotNotifications = [];
 let ttsEnabled = true;
 let currentUtterance = null;
+let leftPanelCollapsed = false;
+let rightPanelCollapsed = false;
 
 // Create fullscreen glass overlay
 function createGlassOverlay() {
@@ -128,69 +130,7 @@ function createGlassOverlay() {
       pointer-events: none;
     `;
 
-    // Create top bar with analyze and screenshot buttons
-    const topBar = document.createElement('div');
-    topBar.style.cssText = `
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(255, 255, 255, 0.15);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      border-radius: 16px;
-      padding: 12px 20px;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 12px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-      pointer-events: auto;
-      z-index: 2147483648;
-      min-width: 280px;
-    `;
 
-    topBar.innerHTML = `
-      <button id="ai-shura-analyze-btn" style="
-        background: linear-gradient(135deg, rgba(102, 126, 234, 0.9), rgba(118, 75, 162, 0.9));
-        color: white;
-        border: none;
-        padding: 10px 16px;
-        border-radius: 12px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 14px;
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        backdrop-filter: blur(10px);
-      ">
-        <span style="font-size: 16px;">🔍</span>
-        <span>Analyze Page</span>
-      </button>
-      <button id="ai-shura-screenshot-btn" style="
-        background: linear-gradient(135deg, rgba(76, 201, 240, 0.9), rgba(102, 126, 234, 0.9));
-        color: white;
-        border: none;
-        padding: 10px 16px;
-        border-radius: 12px;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 14px;
-        transition: all 0.2s ease;
-        box-shadow: 0 4px 20px rgba(76, 201, 240, 0.3);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        backdrop-filter: blur(10px);
-      ">
-        <span style="font-size: 16px;">📸</span>
-        <span>Take Screenshot</span>
-      </button>
-    `;
 
     // Create left sidebar (content info) - full height
     const leftSidebar = document.createElement('div');
@@ -211,7 +151,7 @@ function createGlassOverlay() {
       opacity: 0;
       pointer-events: auto;
       z-index: 2147483647;
-      transition: transform 0.3s ease;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     `;
     leftSidebar.id = 'ai-shura-left-sidebar';
 
@@ -236,11 +176,11 @@ function createGlassOverlay() {
       opacity: 0;
       pointer-events: auto;
       z-index: 2147483647;
-      transition: transform 0.3s ease;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     `;
     rightMain.id = 'ai-shura-right-main';
 
-    // Create left sidebar header with collapse button
+    // Create left sidebar header with analyze and screenshot buttons
     const leftHeader = document.createElement('div');
     leftHeader.style.cssText = `
       background: rgba(255, 255, 255, 0.1);
@@ -248,35 +188,79 @@ function createGlassOverlay() {
       border-bottom: 1px solid rgba(255, 255, 255, 0.15);
       padding: 16px;
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
+      gap: 12px;
       position: sticky;
       top: 0;
       z-index: 10;
     `;
     leftHeader.innerHTML = `
-      <h3 style="
-        margin: 0;
-        color: rgba(0, 0, 0, 0.8);
-        font-size: 16px;
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      ">
-        📄 <span>Page Analysis</span>
-      </h3>
-      <button id="ai-shura-collapse-left" style="
-        background: rgba(255, 255, 255, 0.2);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        border-radius: 6px;
-        color: rgba(0, 0, 0, 0.7);
-        cursor: pointer;
-        font-size: 14px;
-        padding: 6px 8px;
-        backdrop-filter: blur(5px);
-        transition: all 0.2s ease;
-      ">◀</button>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="
+          margin: 0;
+          color: rgba(0, 0, 0, 0.8);
+          font-size: 16px;
+          font-weight: 600;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        ">
+          📄 <span>Page Analysis</span>
+        </h3>
+        <button id="ai-shura-hide-left" style="
+          background: rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 6px;
+          color: rgba(0, 0, 0, 0.7);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 4px 8px;
+          backdrop-filter: blur(5px);
+          transition: all 0.2s ease;
+        ">Hide</button>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button id="ai-shura-analyze-btn" style="
+          background: linear-gradient(135deg, rgba(102, 126, 234, 0.9), rgba(118, 75, 162, 0.9));
+          color: white;
+          border: none;
+          padding: 8px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 12px;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          backdrop-filter: blur(10px);
+          flex: 1;
+        ">
+          <span style="font-size: 14px;">🔍</span>
+          <span>Analyze</span>
+        </button>
+        <button id="ai-shura-screenshot-btn" style="
+          background: linear-gradient(135deg, rgba(76, 201, 240, 0.9), rgba(102, 126, 234, 0.9));
+          color: white;
+          border: none;
+          padding: 8px 12px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 12px;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 10px rgba(76, 201, 240, 0.3);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          backdrop-filter: blur(10px);
+          flex: 1;
+        ">
+          <span style="font-size: 14px;">📸</span>
+          <span>Screenshot</span>
+        </button>
+      </div>
     `;
 
     // Create left sidebar content
@@ -287,7 +271,7 @@ function createGlassOverlay() {
     `;
     leftContent.id = 'ai-shura-left-content';
 
-    // Create right main header with collapse button
+    // Create right main header with hide button
     const rightHeader = document.createElement('div');
     rightHeader.style.cssText = `
       background: rgba(255, 255, 255, 0.1);
@@ -337,20 +321,41 @@ function createGlassOverlay() {
           padding: 4px 8px;
           backdrop-filter: blur(5px);
           transition: all 0.2s ease;
-          margin-right: 8px;
         ">🔊 TTS</button>
+        <button id="ai-shura-auto-screenshot-toggle" style="
+          background: rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 6px;
+          color: rgba(0, 0, 0, 0.7);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 4px 8px;
+          backdrop-filter: blur(5px);
+          transition: all 0.2s ease;
+        ">📸 Auto</button>
+        <button id="ai-shura-microphone-toggle" style="
+          background: rgba(255, 255, 255, 0.2);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          border-radius: 6px;
+          color: rgba(0, 0, 0, 0.7);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 4px 8px;
+          backdrop-filter: blur(5px);
+          transition: all 0.2s ease;
+        ">🎤 Mic</button>
       </div>
-      <button id="ai-shura-collapse-right" style="
+      <button id="ai-shura-hide-right" style="
         background: rgba(255, 255, 255, 0.2);
         border: 1px solid rgba(255, 255, 255, 0.3);
         border-radius: 6px;
         color: rgba(0, 0, 0, 0.7);
         cursor: pointer;
-        font-size: 14px;
-        padding: 6px 8px;
+        font-size: 12px;
+        padding: 4px 8px;
         backdrop-filter: blur(5px);
         transition: all 0.2s ease;
-      ">▶</button>
+      ">Hide</button>
     `;
 
     // Create chat history area
@@ -432,9 +437,82 @@ function createGlassOverlay() {
     rightMain.appendChild(chatHistory);
     rightMain.appendChild(inputArea);
 
-    glassOverlay.appendChild(topBar);
     glassOverlay.appendChild(leftSidebar);
     glassOverlay.appendChild(rightMain);
+
+    // Create floating reveal buttons (initially hidden)
+    const revealButtons = document.createElement('div');
+    revealButtons.id = 'ai-shura-reveal-buttons';
+    revealButtons.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 2147483649;
+      pointer-events: auto;
+    `;
+    revealButtons.innerHTML = `
+      <button id="ai-shura-reveal-left" style="
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.9), rgba(118, 75, 162, 0.9));
+        color: white;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        backdrop-filter: blur(10px);
+        min-width: 140px;
+        justify-content: center;
+      ">
+        <span style="font-size: 16px;">📄</span>
+        <span>Show Analysis</span>
+      </button>
+    `;
+
+    // Create separate reveal button for right panel
+    const revealRightButton = document.createElement('div');
+    revealRightButton.id = 'ai-shura-reveal-right-container';
+    revealRightButton.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      display: none;
+      z-index: 2147483649;
+      pointer-events: auto;
+    `;
+    revealRightButton.innerHTML = `
+      <button id="ai-shura-reveal-right" style="
+        background: linear-gradient(135deg, rgba(76, 201, 240, 0.9), rgba(102, 126, 234, 0.9));
+        color: white;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 12px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 20px rgba(76, 201, 240, 0.3);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        backdrop-filter: blur(10px);
+        min-width: 140px;
+        justify-content: center;
+      ">
+        <span style="font-size: 16px;">💬</span>
+        <span>Show Chat</span>
+      </button>
+    `;
+    glassOverlay.appendChild(revealButtons);
+    glassOverlay.appendChild(revealRightButton);
 
     // Add to page
     document.body.appendChild(glassOverlay);
@@ -456,17 +534,76 @@ function setupOverlayEventListeners() {
   const questionInput = glassOverlay.querySelector('#ai-shura-question-input');
   const leftSidebar = glassOverlay.querySelector('#ai-shura-left-sidebar');
   const rightMain = glassOverlay.querySelector('#ai-shura-right-main');
-  const collapseLeftBtn = glassOverlay.querySelector('#ai-shura-collapse-left');
-  const collapseRightBtn = glassOverlay.querySelector('#ai-shura-collapse-right');
+  const hideLeftBtn = glassOverlay.querySelector('#ai-shura-hide-left');
+  const hideRightBtn = glassOverlay.querySelector('#ai-shura-hide-right');
   const analyzeBtn = glassOverlay.querySelector('#ai-shura-analyze-btn');
   const screenshotBtn = glassOverlay.querySelector('#ai-shura-screenshot-btn');
   const ttsToggleBtn = glassOverlay.querySelector('#ai-shura-tts-toggle');
+  const revealButtons = glassOverlay.querySelector('#ai-shura-reveal-buttons');
+  const revealLeftBtn = glassOverlay.querySelector('#ai-shura-reveal-left');
+  const revealRightContainer = glassOverlay.querySelector('#ai-shura-reveal-right-container');
+  const revealRightBtn = glassOverlay.querySelector('#ai-shura-reveal-right');
+  const autoScreenshotToggle = glassOverlay.querySelector('#ai-shura-auto-screenshot-toggle');
+  const microphoneToggle = glassOverlay.querySelector('#ai-shura-microphone-toggle');
+
+  // Track panel visibility
+  let leftPanelHidden = false;
+  let rightPanelHidden = false;
+  
+  // Track toggle states
+  let autoScreenshotEnabled = false;
+  let microphoneEnabled = false;
+
+  // Function to check if reveal buttons should be shown
+  function checkRevealButtons() {
+    if (leftPanelHidden) {
+      revealButtons.style.display = 'flex';
+    } else {
+      revealButtons.style.display = 'none';
+    }
+    
+    if (rightPanelHidden) {
+      revealRightContainer.style.display = 'block';
+    } else {
+      revealRightContainer.style.display = 'none';
+    }
+  }
+
+  // Function to update auto screenshot button appearance
+  function updateAutoScreenshotButton() {
+    if (autoScreenshotEnabled) {
+      autoScreenshotToggle.style.background = 'rgba(76, 201, 240, 0.2)';
+      autoScreenshotToggle.style.borderColor = 'rgba(76, 201, 240, 0.4)';
+      autoScreenshotToggle.style.color = 'rgba(76, 201, 240, 0.8)';
+      autoScreenshotToggle.textContent = '📸 Auto';
+    } else {
+      autoScreenshotToggle.style.background = 'rgba(255, 255, 255, 0.2)';
+      autoScreenshotToggle.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+      autoScreenshotToggle.style.color = 'rgba(0, 0, 0, 0.7)';
+      autoScreenshotToggle.textContent = '📸 Auto';
+    }
+  }
+
+  // Function to update microphone button appearance
+  function updateMicrophoneButton() {
+    if (microphoneEnabled) {
+      microphoneToggle.style.background = 'rgba(76, 201, 240, 0.2)';
+      microphoneToggle.style.borderColor = 'rgba(76, 201, 240, 0.4)';
+      microphoneToggle.style.color = 'rgba(76, 201, 240, 0.8)';
+      microphoneToggle.textContent = '🎤 Mic';
+    } else {
+      microphoneToggle.style.background = 'rgba(255, 255, 255, 0.2)';
+      microphoneToggle.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+      microphoneToggle.style.color = 'rgba(0, 0, 0, 0.7)';
+      microphoneToggle.textContent = '🎤 Mic';
+    }
+  }
 
   // Analyze Page button
   analyzeBtn.addEventListener('click', () => {
     extractContent().then(content => {
       updateSidebarContent(content);
-      showGlassOverlay();
+      // Don't call showGlassOverlay() since panels are already visible
     }).catch(error => {
       console.error('Failed to analyze page:', error);
     });
@@ -486,7 +623,7 @@ function setupOverlayEventListeners() {
   screenshotBtn.addEventListener('click', () => {
     takeScreenshot().then(() => {
       updateSidebarContent(extractedContent);
-      showGlassOverlay();
+      // Don't call showGlassOverlay() since panels are already visible
     }).catch(error => {
       console.error('Failed to take screenshot:', error);
     });
@@ -502,34 +639,126 @@ function setupOverlayEventListeners() {
     e.target.style.boxShadow = '0 4px 20px rgba(76, 201, 240, 0.3)';
   });
 
-  // Collapse left sidebar
-  collapseLeftBtn.addEventListener('click', () => {
-    const isCollapsed = leftSidebar.style.transform === 'translateX(-100%)';
-    leftSidebar.style.transform = isCollapsed ? 'translateX(0)' : 'translateX(-100%)';
-    collapseLeftBtn.textContent = isCollapsed ? '◀' : '▶';
+  // Hide left sidebar
+  hideLeftBtn.addEventListener('click', () => {
+    leftSidebar.style.display = 'none';
+    leftPanelHidden = true;
+    checkRevealButtons();
+    console.log('Left panel hidden');
   });
 
-  collapseLeftBtn.addEventListener('mouseenter', (e) => {
+  hideLeftBtn.addEventListener('mouseenter', (e) => {
     e.target.style.background = 'rgba(255, 255, 255, 0.3)';
   });
 
-  collapseLeftBtn.addEventListener('mouseleave', (e) => {
+  hideLeftBtn.addEventListener('mouseleave', (e) => {
     e.target.style.background = 'rgba(255, 255, 255, 0.2)';
   });
 
-  // Collapse right main
-  collapseRightBtn.addEventListener('click', () => {
-    const isCollapsed = rightMain.style.transform === 'translateX(100%)';
-    rightMain.style.transform = isCollapsed ? 'translateX(0)' : 'translateX(100%)';
-    collapseRightBtn.textContent = isCollapsed ? '▶' : '◀';
+  // Hide right main
+  hideRightBtn.addEventListener('click', () => {
+    rightMain.style.display = 'none';
+    rightPanelHidden = true;
+    checkRevealButtons();
+    console.log('Right panel hidden');
   });
 
-  collapseRightBtn.addEventListener('mouseenter', (e) => {
+  hideRightBtn.addEventListener('mouseenter', (e) => {
     e.target.style.background = 'rgba(255, 255, 255, 0.3)';
   });
 
-  collapseRightBtn.addEventListener('mouseleave', (e) => {
+  hideRightBtn.addEventListener('mouseleave', (e) => {
     e.target.style.background = 'rgba(255, 255, 255, 0.2)';
+  });
+
+  // Reveal left panel
+  revealLeftBtn.addEventListener('click', () => {
+    // Reset to original position and styling with fade-in animation
+    leftSidebar.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 320px;
+      height: 100vh;
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border-right: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 2px 0 32px rgba(0, 0, 0, 0.1);
+      overflow-y: auto;
+      opacity: 0;
+      pointer-events: auto;
+      z-index: 2147483647;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+      transform: translateX(-20px);
+    `;
+    
+    // Trigger fade-in animation
+    setTimeout(() => {
+      leftSidebar.style.opacity = '1';
+      leftSidebar.style.transform = 'translateX(0)';
+    }, 10);
+    
+    leftPanelHidden = false;
+    checkRevealButtons();
+    console.log('Left panel revealed');
+  });
+
+  revealLeftBtn.addEventListener('mouseenter', (e) => {
+    e.target.style.transform = 'scale(1.05)';
+    e.target.style.boxShadow = '0 6px 25px rgba(102, 126, 234, 0.4)';
+  });
+
+  revealLeftBtn.addEventListener('mouseleave', (e) => {
+    e.target.style.transform = 'scale(1)';
+    e.target.style.boxShadow = '0 4px 20px rgba(102, 126, 234, 0.3)';
+  });
+
+  // Reveal right panel
+  revealRightBtn.addEventListener('click', () => {
+    // Reset to original position and styling with fade-in animation
+    rightMain.style.cssText = `
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 380px;
+      height: 100vh;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border-left: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: -2px 0 32px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: auto;
+      z-index: 2147483647;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      transform: translateX(20px);
+    `;
+    
+    // Trigger fade-in animation
+    setTimeout(() => {
+      rightMain.style.opacity = '1';
+      rightMain.style.transform = 'translateX(0)';
+    }, 10);
+    
+    rightPanelHidden = false;
+    checkRevealButtons();
+    console.log('Right panel revealed');
+  });
+
+  revealRightBtn.addEventListener('mouseenter', (e) => {
+    e.target.style.transform = 'scale(1.05)';
+    e.target.style.boxShadow = '0 6px 25px rgba(76, 201, 240, 0.4)';
+  });
+
+  revealRightBtn.addEventListener('mouseleave', (e) => {
+    e.target.style.transform = 'scale(1)';
+    e.target.style.boxShadow = '0 4px 20px rgba(76, 201, 240, 0.3)';
   });
 
   // Send button
@@ -576,6 +805,41 @@ function setupOverlayEventListeners() {
   
   ttsToggleBtn.addEventListener('mouseleave', (e) => {
     e.target.style.background = ttsEnabled ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 59, 48, 0.2)';
+  });
+
+  // Auto Screenshot toggle button
+  autoScreenshotToggle.addEventListener('click', () => {
+    autoScreenshotEnabled = !autoScreenshotEnabled;
+    updateAutoScreenshotButton();
+    console.log('Auto screenshot:', autoScreenshotEnabled ? 'enabled' : 'disabled');
+  });
+
+  autoScreenshotToggle.addEventListener('mouseenter', (e) => {
+    e.target.style.background = 'rgba(255, 255, 255, 0.3)';
+  });
+
+  autoScreenshotToggle.addEventListener('mouseleave', (e) => {
+    e.target.style.background = autoScreenshotEnabled ? 'rgba(76, 201, 240, 0.2)' : 'rgba(255, 255, 255, 0.2)';
+  });
+
+  // Microphone toggle button
+  microphoneToggle.addEventListener('click', () => {
+    microphoneEnabled = !microphoneEnabled;
+    updateMicrophoneButton();
+    if (microphoneEnabled) {
+      startMicrophoneListening();
+    } else {
+      stopAudioListening();
+    }
+    console.log('Microphone:', microphoneEnabled ? 'enabled' : 'disabled');
+  });
+
+  microphoneToggle.addEventListener('mouseenter', (e) => {
+    e.target.style.background = 'rgba(255, 255, 255, 0.3)';
+  });
+
+  microphoneToggle.addEventListener('mouseleave', (e) => {
+    e.target.style.background = microphoneEnabled ? 'rgba(76, 201, 240, 0.2)' : 'rgba(255, 255, 255, 0.2)';
   });
 
   // Escape key to close
@@ -1340,6 +1604,9 @@ function startAudioProcessing(analyzer, source) {
   let speechBuffer = [];
   let isSpeaking = false;
   let isProcessing = false;
+  let speechStartTime = 0;
+  let minSpeechDuration = 1000; // Minimum 1 second of speech before processing
+  let silenceThreshold = 80; // Increased silence threshold for better word detection
   
   const processAudio = () => {
     if (!audioContext || audioContext.state === 'closed') return;
@@ -1349,33 +1616,38 @@ function startAudioProcessing(analyzer, source) {
     // Calculate average volume
     const average = dataArray.reduce((sum, value) => sum + value, 0) / bufferLength;
     
-    // Detect speech (simple threshold-based detection)
-    if (average > 25) { // Lowered threshold for better detection
+    // Detect speech (improved threshold-based detection)
+    if (average > 20) { // Lowered threshold for earlier detection
       silenceCounter = 0;
       if (!isSpeaking) {
         isSpeaking = true;
+        speechStartTime = Date.now();
         console.log(`${source} speech detected`);
         addMessageToChat('system', `🎤 ${source} audio detected - listening...`);
-        // Stop TTS when user starts speaking
-        stopTTS();
+        // Removed TTS interruption - let TTS continue playing
       }
       
       // Add to speech buffer
       speechBuffer.push(average);
-      
-      // If we have enough speech data and not already processing, process it
-      if (speechBuffer.length > 30 && !isProcessing) { // Reduced buffer size for faster response
-        isProcessing = true;
-        processSpeechData(speechBuffer, source).finally(() => {
-          isProcessing = false;
-          speechBuffer = [];
-        });
-      }
     } else {
       silenceCounter++;
-      if (silenceCounter > 50 && isSpeaking) { // Reduced silence threshold
+      
+      // Only end speech after longer silence to capture trailing words
+      if (silenceCounter > silenceThreshold && isSpeaking) {
+        const speechDuration = Date.now() - speechStartTime;
+        
+        // Only process if we had enough speech and enough silence
+        if (speechDuration >= minSpeechDuration && !isProcessing) {
+          isProcessing = true;
+          console.log(`${source} speech ended, duration: ${speechDuration}ms, processing...`);
+          processSpeechData(speechBuffer, source).finally(() => {
+            isProcessing = false;
+            speechBuffer = [];
+          });
+        }
+        
         isSpeaking = false;
-        console.log(`${source} speech ended`);
+        speechBuffer = [];
       }
     }
     
@@ -1391,6 +1663,9 @@ function startAudioProcessing(analyzer, source) {
 async function processSpeechData(audioData, source) {
   try {
     console.log(`Processing ${source} audio data...`);
+    
+    // Add a small delay to ensure we capture trailing words
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     // Convert audio data to text using Web Speech API
     const text = await convertSpeechToText();
@@ -1433,17 +1708,33 @@ async function convertSpeechToText() {
     recognition.lang = 'en-US';
     recognition.maxAlternatives = 1;
     
+    // Add a small delay before starting to ensure we capture the beginning
+    setTimeout(() => {
+      try {
+        recognition.start();
+        console.log('Speech recognition started with delay');
+      } catch (error) {
+        reject(error);
+      }
+    }, 200); // 200ms delay to capture first words
+    
     let hasResult = false;
+    let timeoutId = null;
     
     recognition.onresult = (event) => {
       hasResult = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      
       const transcript = event.results[0][0].transcript;
-      console.log('Speech recognition result:', transcript);
+      const confidence = event.results[0][0].confidence;
+      console.log('Speech recognition result:', transcript, 'confidence:', confidence);
       resolve(transcript);
     };
     
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
+      if (timeoutId) clearTimeout(timeoutId);
+      
       if (event.error === 'no-speech') {
         resolve(''); // Resolve with empty string for no speech
       } else {
@@ -1452,17 +1743,18 @@ async function convertSpeechToText() {
     };
     
     recognition.onend = () => {
+      if (timeoutId) clearTimeout(timeoutId);
       if (!hasResult) {
         resolve(''); // Resolve with empty string if no result
       }
     };
     
-    try {
-      recognition.start();
-      console.log('Speech recognition started');
-    } catch (error) {
-      reject(error);
-    }
+    // Add timeout to prevent hanging
+    timeoutId = setTimeout(() => {
+      console.log('Speech recognition timeout');
+      recognition.stop();
+      resolve('');
+    }, 10000); // 10 second timeout
   });
 }
 
@@ -1718,7 +2010,8 @@ window.aiShura = {
   extractedContent: () => extractedContent,
   conversationHistory: () => conversationHistory,
   audioStatus: () => ({ audioListeningEnabled, systemAudioEnabled, ttsEnabled }),
-  screenshotData: () => screenshotData
+  screenshotData: () => screenshotData,
+  panelStatus: () => ({ leftPanelCollapsed, rightPanelCollapsed })
 };
 
 console.log('=== AI SHURA ENHANCED CONTENT SCRIPT LOADED ==='); 
